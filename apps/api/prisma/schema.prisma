@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CLIENT
+  ADMIN
+}
+
+enum VenueType {
+  SPORTS
+  HAIRDRESSER
+  FOOTBALL
+  WELLNESS
+  OTHER
+}
+
+enum BookingStatus {
+  HELD
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum EmailStatus {
+  SENT
+  FAILED
+}
+
+model User {
+  id                     String    @id @default(uuid()) @db.Uuid
+  email                  String    @unique
+  passwordHash           String
+  firstName              String
+  lastName               String
+  role                   Role      @default(CLIENT)
+  isEmailVerified        Boolean   @default(false)
+  emailVerificationToken String?
+  resetPasswordToken     String?
+  resetPasswordExpires   DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  bookings  Booking[]
+  auditLogs AuditLog[]
+}
+
+model Venue {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String    @unique
+  type        VenueType @default(SPORTS)
+  description String?
+  address     String
+  city        String
+  timezone    String    @default("Africa/Casablanca")
+  imageUrl    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  resources Resource[]
+}
+
+model Resource {
+  id                  String   @id @default(uuid()) @db.Uuid
+  venueId             String   @db.Uuid
+  name                String
+  description         String?
+  slotDurationMinutes Int      @default(60)
+  priceCents          Int      @default(2000)
+  currency            String   @default("EUR")
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  venue             Venue              @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  openingRules      OpeningRule[]
+  closureExceptions ClosureException[]
+  bookings          Booking[]
+}
+
+model OpeningRule {
+  id         String   @id @default(uuid()) @db.Uuid
+  resourceId String   @db.Uuid
+  dayOfWeek  Int // 0=Sunday, 1=Monday ... 6=Saturday
+  openTime   String // "09:00"
+  closeTime  String // "18:00"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, dayOfWeek])
+}
+
+model ClosureException {
+  id         String   @id @default(uuid()) @db.Uuid
+  resourceId String   @db.Uuid
+  startDate  DateTime
+  endDate    DateTime
+  reason     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, startDate, endDate])
+}
+
+model Booking {
+  id            String        @id @default(uuid()) @db.Uuid
+  userId        String        @db.Uuid
+  resourceId    String        @map("resource_id") @db.Uuid
+  startAt       DateTime      @map("start_at") @db.Timestamptz
+  endAt         DateTime      @map("end_at") @db.Timestamptz
+  status        BookingStatus @default(HELD)
+  holdExpiresAt DateTime?
+  priceCents    Int
+  currency      String        @default("EUR")
+  version       Int           @default(1)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  payment  Payment?
+
+  @@index([resourceId, startAt, endAt])
+  @@index([userId])
+  @@index([status, holdExpiresAt])
+}
+
+model Payment {
+  id                      String        @id @default(uuid()) @db.Uuid
+  bookingId               String        @unique @db.Uuid
+  stripePaymentIntentId   String?       @unique
+  stripeCheckoutSessionId String?       @unique
+  amountCents             Int
+  currency                String        @default("EUR")
+  status                  PaymentStatus @default(PENDING)
+  refundedAmountCents     Int           @default(0)
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model StripeEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  stripeEventId String   @unique
+  type          String
+  processedAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+}
+
+model EmailLog {
+  id           String      @id @default(uuid()) @db.Uuid
+  recipient    String
+  subject      String
+  template     String
+  status       EmailStatus @default(SENT)
+  errorMessage String?
+  sentAt       DateTime    @default(now())
+
+  @@index([recipient])
+}
