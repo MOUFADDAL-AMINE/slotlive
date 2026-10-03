@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
@@ -17,8 +18,9 @@ async function bootstrap() {
   // Structured logging with Pino
   app.useLogger(app.get(Logger));
 
-  // Security
+  // Security & Middleware
   app.use(helmet());
+  app.use(cookieParser());
   app.enableCors({
     origin: env.FRONTEND_URL,
     credentials: true,
