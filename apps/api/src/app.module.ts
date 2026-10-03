@@ -7,6 +7,7 @@ import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
+import { VenuesModule } from './venues/venues.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { AuthModule } from './auth/auth.module';
     RedisModule,
     HealthModule,
     AuthModule,
+    VenuesModule,
   ],
 })
 export class AppModule {}
