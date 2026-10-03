@@ -2,6 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
+import { EventsGateway } from '../events/events.gateway';
 import { BookingStatus } from '@prisma/client';
 
 export const BOOKING_EXPIRATION_QUEUE = 'booking-expiration';
@@ -11,7 +12,10 @@ export const BOOKING_EXPIRATION_QUEUE = 'booking-expiration';
 export class BookingExpirationProcessor extends WorkerHost {
   private readonly logger = new Logger(BookingExpirationProcessor.name);
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventsGateway: EventsGateway,
+  ) {
     super();
   }
 
@@ -21,32 +25,53 @@ export class BookingExpirationProcessor extends WorkerHost {
     const now = new Date();
 
     if (job.data?.bookingId) {
-      // Single booking expiration task
       const booking = await this.prisma.booking.findUnique({
         where: { id: job.data.bookingId },
       });
 
       if (booking && booking.status === BookingStatus.HELD && booking.holdExpiresAt && booking.holdExpiresAt <= now) {
-        await this.prisma.booking.update({
+        const updated = await this.prisma.booking.update({
           where: { id: booking.id },
           data: { status: BookingStatus.EXPIRED },
         });
-        this.logger.log(`Booking ${booking.id} expired.`);
+
+        this.eventsGateway.emitSlotReleased(booking.resourceId, {
+          resourceId: booking.resourceId,
+          bookingId: booking.id,
+          startAt: booking.startAt.toISOString(),
+          endAt: booking.endAt.toISOString(),
+          status: 'EXPIRED',
+          userId: booking.userId,
+        });
+
+        this.logger.log(`Booking ${booking.id} expired & released.`);
       }
     } else {
-      // Periodic cleanup sweep
-      const expiredCount = await this.prisma.booking.updateMany({
+      const heldBookings = await this.prisma.booking.findMany({
         where: {
           status: BookingStatus.HELD,
           holdExpiresAt: { lte: now },
         },
-        data: {
-          status: BookingStatus.EXPIRED,
-        },
       });
 
-      if (expiredCount.count > 0) {
-        this.logger.log(`Swept and expired ${expiredCount.count} held bookings.`);
+      for (const booking of heldBookings) {
+        await this.prisma.booking.update({
+          where: { id: booking.id },
+          data: { status: BookingStatus.EXPIRED },
+        });
+
+        this.eventsGateway.emitSlotReleased(booking.resourceId, {
+          resourceId: booking.resourceId,
+          bookingId: booking.id,
+          startAt: booking.startAt.toISOString(),
+          endAt: booking.endAt.toISOString(),
+          status: 'EXPIRED',
+          userId: booking.userId,
+        });
+      }
+
+      if (heldBookings.length > 0) {
+        this.logger.log(`Swept and expired ${heldBookings.length} held bookings.`);
       }
     }
   }

@@ -10,6 +10,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AvailabilityService } from '../venues/availability.service';
+import { EventsGateway } from '../events/events.gateway';
 import { BookingStatus, Prisma } from '@prisma/client';
 import { CreateHoldInput } from '@slotlive/shared';
 import { BOOKING_EXPIRATION_QUEUE } from './booking-expiration.processor';
@@ -22,6 +23,7 @@ export class BookingsService {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
     private readonly availabilityService: AvailabilityService,
+    private readonly eventsGateway: EventsGateway,
     @InjectQueue(BOOKING_EXPIRATION_QUEUE)
     private readonly expirationQueue: Queue,
   ) {}
@@ -86,6 +88,16 @@ export class BookingsService {
         { delay: 10 * 60 * 1000, removeOnComplete: true },
       );
 
+      // 5. Real-time WebSocket Event Broadcast
+      this.eventsGateway.emitSlotHeld(resource.id, {
+        resourceId: resource.id,
+        bookingId: booking.id,
+        startAt: startAt.toISOString(),
+        endAt: endAt.toISOString(),
+        status: 'HELD',
+        userId,
+      });
+
       return booking;
     } catch (error) {
       // Catch PostgreSQL Exclusion Constraint Violation (23P01) or Prisma error (P2004/P2002)
@@ -97,7 +109,6 @@ export class BookingsService {
       ) {
         this.logger.warn(`Slot conflict detected for resource ${resource.id} at ${startAt.toISOString()}`);
 
-        // Fetch nearby available slots for user recommendation
         const nearbyFrom = new Date(startAt.getTime() - 2 * 60 * 60 * 1000);
         const nearbyTo = new Date(endAt.getTime() + 2 * 60 * 60 * 1000);
 
@@ -188,7 +199,17 @@ export class BookingsService {
       },
     });
 
-    // Create audit log entry
+    // Real-time broadcast
+    this.eventsGateway.emitSlotCancelled(booking.resourceId, {
+      resourceId: booking.resourceId,
+      bookingId: booking.id,
+      startAt: booking.startAt.toISOString(),
+      endAt: booking.endAt.toISOString(),
+      status: 'CANCELLED',
+      userId,
+    });
+
+    // Audit log
     await this.prisma.auditLog.create({
       data: {
         userId,

@@ -10,6 +10,7 @@ import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { VenuesModule } from './venues/venues.module';
 import { BookingsModule } from './bookings/bookings.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { BookingsModule } from './bookings/bookings.module';
     HealthModule,
     AuthModule,
     VenuesModule,
+    EventsModule,
     BookingsModule,
   ],
 })

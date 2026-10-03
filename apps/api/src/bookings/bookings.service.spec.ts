@@ -8,6 +8,7 @@ describe('BookingsService', () => {
   let prismaMock: any;
   let redisMock: any;
   let availabilityMock: any;
+  let eventsMock: any;
   let queueMock: any;
 
   beforeEach(() => {
@@ -30,6 +31,13 @@ describe('BookingsService', () => {
       calculateSlots: vi.fn().mockReturnValue([]),
     };
 
+    eventsMock = {
+      emitSlotHeld: vi.fn(),
+      emitSlotReleased: vi.fn(),
+      emitSlotConfirmed: vi.fn(),
+      emitSlotCancelled: vi.fn(),
+    };
+
     queueMock = {
       add: vi.fn().mockResolvedValue(true),
     };
@@ -38,6 +46,7 @@ describe('BookingsService', () => {
       prismaMock as any,
       redisMock as any,
       availabilityMock as any,
+      eventsMock as any,
       queueMock as any,
     );
   });
@@ -54,7 +63,7 @@ describe('BookingsService', () => {
     ).rejects.toThrow(NotFoundException);
   });
 
-  it('should create a HELD booking and schedule expiration job', async () => {
+  it('should create a HELD booking and schedule expiration job & emit slot.held', async () => {
     const resource = {
       id: 'b783457a-7bf4-4903-a1f7-e7d6ed15f011',
       isActive: true,
@@ -82,5 +91,6 @@ describe('BookingsService', () => {
 
     expect(res.id).toBe('booking-uuid');
     expect(queueMock.add).toHaveBeenCalledWith('expire-hold', { bookingId: 'booking-uuid' }, expect.any(Object));
+    expect(eventsMock.emitSlotHeld).toHaveBeenCalledWith(resource.id, expect.any(Object));
   });
 });
