@@ -100,13 +100,19 @@ export class BookingsService {
 
       return booking;
     } catch (error) {
-      // Catch PostgreSQL Exclusion Constraint Violation (23P01) or Prisma error (P2004/P2002)
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError ||
+      if ((error as any)?.code === 'P2003') {
+        throw new UnauthorizedException('Session expirée. Veuillez vous déconnecter et vous reconnecter.');
+      }
+
+      // Catch PostgreSQL Exclusion Constraint Violation (23P01) or Prisma constraint error
+      const isExclusionConflict =
         (error as any)?.code === '23P01' ||
+        (error as any)?.code === 'P2004' ||
         (error as any)?.message?.includes('no_overlapping_bookings') ||
-        (error as any)?.message?.includes('exclusion constraint')
-      ) {
+        (error as any)?.message?.includes('exclusion constraint') ||
+        (error as any)?.message?.includes('EXCLUDE');
+
+      if (isExclusionConflict) {
         this.logger.warn(`Slot conflict detected for resource ${resource.id} at ${startAt.toISOString()}`);
 
         const nearbyFrom = new Date(startAt.getTime() - 2 * 60 * 60 * 1000);

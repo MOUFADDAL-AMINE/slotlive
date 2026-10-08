@@ -22,7 +22,11 @@ export class JwtAuthGuard implements CanActivate {
       const payload = await this.jwtService.verifyAsync(token, {
         secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
       });
-      request.user = payload;
+      request.user = {
+        userId: payload.sub || payload.userId,
+        email: payload.email,
+        role: payload.role,
+      };
       return true;
     } catch {
       throw new UnauthorizedException('Jeton expiré ou invalide');

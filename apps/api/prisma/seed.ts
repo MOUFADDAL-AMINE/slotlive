@@ -111,14 +111,14 @@ async function main() {
     const created = await prisma.resource.create({ data: res });
     resources.push(created);
 
-    // Create opening rules (Monday to Saturday 08:00 - 20:00)
-    for (let day = 1; day <= 6; day++) {
+    // Create opening rules (Monday to Sunday 00:00 - 23:59)
+    for (let day = 0; day <= 6; day++) {
       await prisma.openingRule.create({
         data: {
           resourceId: created.id,
           dayOfWeek: day,
-          openTime: '08:00',
-          closeTime: '20:00',
+          openTime: '00:00',
+          closeTime: '23:59',
         },
       });
     }
